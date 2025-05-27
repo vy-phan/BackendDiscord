@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,3 +25,11 @@ use App\Http\Controllers\UserController;
 Route::get('/user', [UserController::class, 'index']);
 Route::get('/user/{id}', [UserController::class, 'show']);
 Route::post('/user', [UserController::class, 'store']);
+
+Route::get('/notification', [NotificationController::class, 'index']);
+Route::get('/notification/{id}', [NotificationController::class, 'show']);
+Route::get('/notification/user/{userId}', [NotificationController::class, 'getByUserId']);
+Route::post('/notification', [NotificationController::class, 'store']);
+Route::put('/notification/{id}', [NotificationController::class, 'update']);
+Route::delete('/notification/{id}', [NotificationController::class, 'destroy']);
+Route::put('/notification/mark-as-read/{id}', [NotificationController::class, 'markAsRead']);
