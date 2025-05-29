@@ -24,5 +24,6 @@ Route::post('/user', [UserController::class, 'store']);
 
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
-// Bỏ middleware auth:sanctum vì đã được áp dụng trong nhóm api
-Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
+});

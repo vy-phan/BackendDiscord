@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Repositories\Interfaces\UserRepositoryInterface;
+use App\Services\AuthService; // Sử dụng AuthService (class cụ thể)
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+// Illuminate\Support\Facades\Auth; // Không cần trực tiếp Auth facade ở đây nữa
 
 class AuthController extends Controller
 {
-    protected $userRepository;
+    protected $authService;
 
-    public function __construct(UserRepositoryInterface $userRepository)
+    // Inject AuthService
+    public function __construct(AuthService $authService) // Type-hint class cụ thể
     {
-        $this->userRepository = $userRepository;
+        $this->authService = $authService;
     }
 
     /**
@@ -21,7 +22,7 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         // Validate input
-        $request->validate([
+        $request->validate([ // Không cần gán vào biến nếu không dùng lại
             'email' => 'required|email',
             'password' => 'required|string|min:6',
         ], [
@@ -31,22 +32,14 @@ class AuthController extends Controller
             'password.min' => 'Mật khẩu phải có ít nhất 6 ký tự.',
         ]);
 
-        // Check credentials
         $credentials = $request->only('email', 'password');
+        $result = $this->authService->login($credentials);
 
-        if (Auth::attempt($credentials)) {
-            $user = Auth::user();
-            // Tạo Sanctum token
-            $token = $user->createToken('auth_token')->plainTextToken;
-
+        if ($result) {
             return response()->json([
                 'message' => 'Đăng nhập thành công',
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                ],
-                'token' => $token,
+                'user' => $result['user'],
+                'token' => $result['token'],
             ], 200);
         }
 
@@ -62,33 +55,24 @@ class AuthController extends Controller
     // Đăng xuất
     public function logout(Request $request)
     {
-        // Kiểm tra người dùng đã đăng nhập chưa
-        if (!$request->user()) {
+        $user = $request->user(); // Lấy user đã được xác thực bởi middleware auth:sanctum
+
+        if (!$user) {
+            // Trường hợp này ít khi xảy ra nếu middleware auth:sanctum được áp dụng đúng và client gửi token hợp lệ.
             return response()->json([
                 'message' => 'Không tìm thấy người dùng hoặc token không hợp lệ.',
             ], 401);
         }
 
-        try {
-            // Xóa token hiện tại khỏi cơ sở dữ liệu (Sanctum)
-            $request->user()->currentAccessToken()->delete();
-
-            // Xóa toàn bộ session (nếu có)
-            $request->session()->flush();
-
-            // Đăng xuất người dùng khỏi Auth (xóa trạng thái đăng nhập)
-            Auth::logout();
-
+        if ($this->authService->logout($user)) {
+            // $request->session()->flush(); // Chỉ cần thiết nếu bạn dùng session song song
             return response()->json([
                 'message' => 'Đăng xuất thành công',
             ], 200);
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Đăng xuất thất bại. Vui lòng thử lại.',
-                'error' => $e->getMessage(),
-            ], 500);
         }
+
+        return response()->json([
+            'message' => 'Đăng xuất thất bại. Vui lòng thử lại.',
+        ], 500);
     }
-
-
 }
