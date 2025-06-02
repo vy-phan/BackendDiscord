@@ -17,8 +17,9 @@ use App\Http\Controllers\UserController;
 */
 
 // LƯU Ý : CÁI NÀY NÈ MAI MỐT CÓ XỬ LÍ BẢO MẬT BỎ MẤY ROUTER VÔ ĐÂY NÈ   
-
+Route::middleware('web')->group(function () {
 Route::get('/user', [UserController::class, 'index']);
+});
 Route::get('/user/{id}', [UserController::class, 'show']);
 Route::post('/user', [UserController::class, 'store']);
 

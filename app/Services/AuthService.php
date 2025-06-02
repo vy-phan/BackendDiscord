@@ -2,56 +2,77 @@
 
 namespace App\Services;
 
-use App\Models\User; // Cần thiết để type-hint $user
+use App\Models\User;
 use Illuminate\Support\Facades\Auth;
-
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Cookie;
 
 class AuthService
 {
     /**
-     * Xử lý đăng nhập người dùng.
+     * Xử lý đăng nhập người dùng và trả về token cùng cookie.
      *
      * @param array $credentials
-     * @return array|null Trả về mảng chứa user và token nếu thành công, null nếu thất bại.
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function login(array $credentials): ?array
+    public function login(array $credentials, Request $request)
     {
-        if (Auth::attempt($credentials)) {
-            $user = Auth::user(); // Lấy người dùng đã được xác thực
-            $token = $user->createToken('auth_token')->plainTextToken;
+        try {
+            if (!Auth::attempt($credentials)) {
+                return response()->json([
+                    'message' => 'Thông tin đăng nhập không đúng.',
+                ], 401);
+            }
 
-            return [
+            $user = Auth::user();
+            $accessToken = $user->createToken('auth_token')->plainTextToken;
+            $refreshToken = $user->createToken('refresh_token')->plainTextToken;
+
+            return response()->json([
+                'message' => 'Đăng nhập thành công',
                 'user' => [
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
                 ],
-                'token' => $token,
-            ];
+                'access_token' => $accessToken,
+                'refresh_token' => $refreshToken,
+            ], 200)->withCookie('access_token', $accessToken, 60, '/', null, true, true, false, 'lax')
+                ->withCookie('refresh_token', $refreshToken, 7 * 24 * 60, '/', null, true, true, false, 'lax');
+        } catch (\Exception $e) {
+            Log::error('Login error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Đã xảy ra lỗi khi đăng nhập.',
+            ], 500);
         }
-        return null;
     }
 
     /**
-     * Xử lý đăng xuất người dùng.
+     * Xử lý đăng xuất người dùng và xóa cookie.
      *
-     * @param User $user Người dùng cần đăng xuất (đã được xác thực)
-     * @return bool
+     * @param User $user
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
      */
-    public function logout(User $user): bool
+    public function logout(User $user, Request $request)
     {
         try {
-            if ($user->currentAccessToken()) {
-                $user->currentAccessToken()->delete();
-                return true; // Trả về true ngay sau khi xóa token thành công
-            } else {
-                // Nếu không có current token, có thể coi như đã logout hoặc token đã bị xóa.
-                // Hoặc nếu bạn muốn chặt chẽ, có thể xóa tất cả token của user:
-                // $user->tokens()->delete();
-                return true; // Hoặc false tùy theo logic bạn muốn
-            }
+            $user->tokens()->delete();
+
+            $response = response()->json([
+                'message' => 'Đăng xuất thành công',
+            ], 200);
+
+            // Xóa cookie access_token và refresh_token
+            return $response->withCookie('access_token', '', -1, '/', null, true, true, false, 'lax')
+                ->withCookie('refresh_token', '', -1, '/', null, true, true, false, 'lax');
         } catch (\Exception $e) {
-            return false;
+            Log::error('Logout error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Đăng xuất thất bại.',
+            ], 500);
         }
     }
 }

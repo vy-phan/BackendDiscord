@@ -2,77 +2,95 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\AuthService; // Sử dụng AuthService (class cụ thể)
+use App\Services\AuthService;
 use Illuminate\Http\Request;
-// Illuminate\Support\Facades\Auth; // Không cần trực tiếp Auth facade ở đây nữa
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
     protected $authService;
 
-    // Inject AuthService
-    public function __construct(AuthService $authService) // Type-hint class cụ thể
+    /**
+     * Inject AuthService vào constructor.
+     */
+    public function __construct(AuthService $authService)
     {
         $this->authService = $authService;
     }
 
     /**
-     * Đăng nhập bằng email và password, trả về token
+     * Xử lý đăng nhập người dùng.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
      */
     public function login(Request $request)
     {
-        // Validate input
-        $request->validate([ // Không cần gán vào biến nếu không dùng lại
-            'email' => 'required|email',
-            'password' => 'required|string|min:6',
-        ], [
-            'email.required' => 'Email là bắt buộc.',
-            'email.email' => 'Email không hợp lệ.',
-            'password.required' => 'Mật khẩu là bắt buộc.',
-            'password.min' => 'Mật khẩu phải có ít nhất 6 ký tự.',
-        ]);
+        try {
+            // Validate input
+            $credentials = $request->validate([
+                'email' => 'required|email',
+                'password' => 'required|string|min:6',
+            ], [
+                'email.required' => 'Email là bắt buộc.',
+                'email.email' => 'Email không hợp lệ.',
+                'password.required' => 'Mật khẩu là bắt buộc.',
+                'password.min' => 'Mật khẩu phải có ít nhất 6 ký tự.',
+            ]);
 
-        $credentials = $request->only('email', 'password');
-        $result = $this->authService->login($credentials);
+            // Gọi service để xử lý đăng nhập
+            $result = $this->authService->login($credentials, $request);
 
-        if ($result) {
+            if ($result) {
+                return $result; // Trả về response đã chứa cookie từ AuthService
+            }
+
             return response()->json([
-                'message' => 'Đăng nhập thành công',
-                'user' => $result['user'],
-                'token' => $result['token'],
-            ], 200);
+                'message' => 'Thông tin đăng nhập không đúng. Vui lòng kiểm tra email hoặc mật khẩu.',
+                'errors' => [
+                    'email' => ['Email hoặc mật khẩu không chính xác.'],
+                    'password' => ['Email hoặc mật khẩu không chính xác.'],
+                ],
+            ], 401);
+        } catch (\Exception $e) {
+            Log::error('Login error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Đã xảy ra lỗi khi đăng nhập. Vui lòng thử lại sau.',
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'Thông tin đăng nhập không đúng. Vui lòng kiểm tra email hoặc mật khẩu.',
-            'errors' => [
-                'email' => ['Email hoặc mật khẩu không chính xác.'],
-                'password' => ['Email hoặc mật khẩu không chính xác.'],
-            ],
-        ], 401);
     }
 
-    // Đăng xuất
+    /**
+     * Xử lý đăng xuất người dùng.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function logout(Request $request)
     {
-        $user = $request->user(); // Lấy user đã được xác thực bởi middleware auth:sanctum
+        try {
+            $user = $request->user(); // Lấy user đã được xác thực bởi middleware auth:sanctum
 
-        if (!$user) {
-            // Trường hợp này ít khi xảy ra nếu middleware auth:sanctum được áp dụng đúng và client gửi token hợp lệ.
+            if (!$user) {
+                return response()->json([
+                    'message' => 'Không tìm thấy người dùng hoặc token không hợp lệ.',
+                ], 401);
+            }
+
+            if ($this->authService->logout($user, $request)) {
+                return response()->json([
+                    'message' => 'Đăng xuất thành công',
+                ], 200);
+            }
+
             return response()->json([
-                'message' => 'Không tìm thấy người dùng hoặc token không hợp lệ.',
-            ], 401);
-        }
-
-        if ($this->authService->logout($user)) {
-            // $request->session()->flush(); // Chỉ cần thiết nếu bạn dùng session song song
+                'message' => 'Đăng xuất thất bại. Vui lòng thử lại.',
+            ], 500);
+        } catch (\Exception $e) {
+            Log::error('Logout error: ' . $e->getMessage());
             return response()->json([
-                'message' => 'Đăng xuất thành công',
-            ], 200);
+                'message' => 'Đã xảy ra lỗi khi đăng xuất. Vui lòng thử lại sau.',
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'Đăng xuất thất bại. Vui lòng thử lại.',
-        ], 500);
     }
 }
